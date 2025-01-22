@@ -3,6 +3,7 @@
 /**
  * @package Video_spider
  * @author  iami233
+ * @description 视频聚合解析类 原作者 iami233，由MakotoArai 二次修改，修复抖音400错误
  * @version 1.2.0
  * @link    https://github.com/5ime/Video_spider
  *
@@ -14,7 +15,7 @@ class Video
 {
     public function pipixia($url)
     {
-        $loc = get_headers($url, true) ['Location'];
+        $loc = get_headers($url, true)['Location'];
         preg_match('/item\/(.*)\?/', $loc, $id);
         $arr = json_decode($this->curl('https://is.snssdk.com/bds/cell/detail/?cell_type=1&aid=1319&app_name=super&cell_id=' . $id[1]), true);
         $video_url = $arr['data']['data']['item']['origin_video_download']['url_list'][0]['url'];
@@ -27,7 +28,8 @@ class Video
                     'time' => $arr['data']['data']['display_time'],
                     'title' => $arr['data']['data']['item']['content'],
                     'cover' => $arr['data']['data']['item']['cover']['url_list'][0]['url'],
-                    'url' => $video_url]
+                    'url' => $video_url
+                ]
             ];
             return $arr;
         }
@@ -40,7 +42,13 @@ class Video
 
         // 检查 ID 是否有效
         if (empty($id)) {
-            return array('code' => 400, 'msg' => '无法解析视频 ID');
+            $finalUrl = $this->realy($url);
+            // 如果finalUrl为false就返回错误信息
+            if ($finalUrl === false) {
+                return array('code' => 400, 'msg' => '无法解析视频 ID');
+            }else{
+                $id = $this->extractId($finalUrl);
+            }
         }
 
         // 构造请求数据
@@ -86,7 +94,7 @@ class Video
 
     public function huoshan($url)
     {
-        $loc = get_headers($url, true) ['location'];
+        $loc = get_headers($url, true)['location'];
         preg_match('/item_id=(.*)&tag/', $loc, $id);
         $arr = json_decode($this->curl('https://share.huoshan.com/api/item/info?item_id=' . $id[1]), true);
         $url = $arr['data']['item_info']['url'];
@@ -95,7 +103,8 @@ class Video
             $arr = [
                 'code' => 200,
                 'msg' => '解析成功',
-                'data' => ['cover' => $arr["data"]["item_info"]["cover"],
+                'data' => [
+                    'cover' => $arr["data"]["item_info"]["cover"],
                     'url' => 'https://api-hl.huoshan.com/hotsoon/item/video/_playback/?video_id=' . $id[1]
                 ]
             ];
@@ -172,7 +181,7 @@ class Video
                 'msg' => '解析成功',
                 'data' => [
                     'author' => $video_author[1],
-                    'avatar' => str_replace('1080.180', '1080.680', $video_author_img) [1],
+                    'avatar' => str_replace('1080.180', '1080.680', $video_author_img)[1],
                     'like' => $video_like[1],
                     'title' => $video_title[1],
                     'cover' => $video_cover[1],
@@ -237,8 +246,11 @@ class Video
         } else {
             preg_match('/short-video\/(.*?)\?/', $url, $matches);
         }
-        $headers = array('Cookie: did=web_9bceee20fa5d4a968535a27e538bf51b; didv=1655992503000;',
-            'Referer: ' . $url, 'Content-Type: application/json');
+        $headers = array(
+            'Cookie: did=web_9bceee20fa5d4a968535a27e538bf51b; didv=1655992503000;',
+            'Referer: ' . $url,
+            'Content-Type: application/json'
+        );
         $post_data = '{"photoId": "' . str_replace(['video/', '?'], '', $matches[1]) . '","isLongVideo": false}';
         $url = 'https://v.m.chenzhongtech.com/rest/wd/photo/info';
         $json = json_decode($this->curl($url, $headers, $post_data), true);
@@ -268,7 +280,8 @@ class Video
         }
         $arr = json_decode($this->curl('https://quanmin.hao222.com/wise/growth/api/sv/immerse?source=share-h5&pd=qm_share_mvideo&vid=' . $id . '&_format=json'), true);
         if ($arr) {
-            $arr = ['code' => 200,
+            $arr = [
+                'code' => 200,
                 'msg' => '解析成功',
                 'data' => [
                     'author' => $arr["data"]["author"]['name'],
@@ -329,7 +342,7 @@ class Video
         preg_match('/\?vid=(.*)\b/', $url, $id);
         $arr = json_decode($this->curl('https://baobab.kaiyanapp.com/api/v1/video/' . $id[1] . '?f=web'), true);
         $video = 'https://baobab.kaiyanapp.com/api/v1/playUrl?vid=' . $id[1] . '&resourceType=video&editionType=default&source=aliyun&playUrlType=url_oss&ptl=true';
-        $video_url = get_headers($video, true) ["Location"];
+        $video_url = get_headers($video, true)["Location"];
         if ($video_url) {
             $arr = [
                 'code' => 200,
@@ -472,7 +485,7 @@ class Video
     public function xigua($url)
     {
         if (strpos($url, 'v.ixigua.com') != false) {
-            $loc = get_headers($url, true) ['Location'];
+            $loc = get_headers($url, true)['Location'];
             preg_match('/video\/(.*)\//', $loc, $id);
             $url = 'https://www.ixigua.com/' . $id[1];
         }
@@ -737,6 +750,35 @@ class Video
         curl_setopt($con, CURLOPT_TIMEOUT, 5000);
         $result = curl_exec($con);
         return $result;
+    }
+
+    private function realy($url)
+    {
+        // 初始化cURL会话
+        $ch = curl_init();
+
+        // 设置cURL选项
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1); // 返回结果而不是直接输出
+        curl_setopt($ch, CURLOPT_HEADER, 1); // 包括header信息在输出中
+        curl_setopt($ch, CURLOPT_NOBODY, 0); // 不包括body内容，但这里我们想要body所以设置为0
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1); // 跟随重定向
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // 取消SSL验证
+        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false); // 检查证书中的主机名是否与请求的目标一致，false表示不检查
+
+        // 执行cURL会话，并获取响应
+        $response = curl_exec($ch);
+
+        if ($response === false) {
+            curl_close($ch);
+            return $response;
+        } else {
+            // 获取响应信息
+            $info = curl_getinfo($ch);
+            curl_close($ch);
+            // 返回最终跳转的URL
+            return $info['url'];
+        }
     }
 
 
